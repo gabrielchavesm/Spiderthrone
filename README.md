@@ -1,4 +1,4 @@
-# Spiderthrone Legal RAG
+# Spiderthrone Legal RAG 
 
 **Spiderthrone** is an enterprise-grade Legal RAG (Retrieval-Augmented Generation) system built specifically for Portuguese legal professionals. It guarantees strict adherence to official legal sources (DRE/DGSI), transparent source citations, temporal validity ("Time-Travel" RAG), and generative UI components for structured data rendering.
 
@@ -64,45 +64,63 @@ REDIS_PORT=6379
 
 ---
 
-## How to Run the Project Locally
+## How to Run the Project Locally (Platform Specific)
 
-To run the full stack, use three separate terminal windows:
+Choose your operating system instructions below to run the full stack across two/three terminal windows:
 
-### Step 1: Start Redis
-* **Linux / WSL / Ubuntu:**
-  ```bash
-  sudo service redis-server start
-  redis-cli ping  # Should return PONG
-  ```
-* **macOS (Homebrew):**
-  ```bash
-  services start redis
-  redis-cli ping  # Should return PONG
-  ```
+### macOS Setup (Apple Silicon / Intel)
 
-### Step 2: Run the Backend (FastAPI)
-1. Create and activate your virtual environment:
+1. **Install System Dependencies (via Homebrew):**
+   ```bash
+   brew install python node redis
+   ```
+
+2. **Start Redis:**
+   ```bash
+   brew services start redis
+   redis-cli ping  # Should return PONG
+   ```
+
+3. **Run the Backend (FastAPI):**
    ```bash
    python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-   ```
-2. Install Python dependencies:
-   ```bash
-   uv pip install fastapi uvicorn pydantic python-dotenv qdrant-client fastembed redis requests beautifulsoup4 playwright openai
-   ```
-3. Start the FastAPI server:
-   ```bash
-   python -m api_7
+   source .venv/bin/activate
+   uv sync
+   python -m api
    ```
    *The backend will be live at `http://localhost:8000`.*
 
-### Step 3: Run the Frontend (React + Vite)
-1. Install frontend dependencies:
+4. **Run the Frontend (React + Vite):** (Open a second terminal window in the `frontend/` directory)
    ```bash
+   cd frontend
    npm install
+   npm run dev
    ```
-2. Start the development server:
+   *The frontend will be accessible at `http://localhost:5173`.*
+
+---
+
+### 🐧 Windows / WSL / Ubuntu Setup
+
+1. **Start Redis:**
    ```bash
+   sudo service redis-server start
+   redis-cli ping  # Should return PONG
+   ```
+
+2. **Run the Backend (FastAPI):**
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # Or .venv\Scripts\activate if running natively on Windows CMD/PowerShell
+   uv sync
+   python -m api
+   ```
+   *The backend will be live at `http://localhost:8000`.*
+
+3. **Run the Frontend (React + Vite):** (Open a second terminal window in the `frontend/` directory)
+   ```bash
+   cd frontend
+   npm install
    npm run dev
    ```
    *The frontend will be accessible at `http://localhost:5173`.*
