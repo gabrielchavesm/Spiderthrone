@@ -40,12 +40,16 @@ const TabelaValoresWidget = ({ itens }: any) => (
 );
 
 // ------------------------------------------------------------------
-// 2. O MOTOR DE CHAT MINIMALISTA
+// 2. O MOTOR DE CHAT COM SUPORTE A SESSÃO REDIS
 // ------------------------------------------------------------------
 export default function App() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Gera um identificador de sessão único por aba do navegador para o Redis
+  const [sessionId] = useState(() => crypto.randomUUID());
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Faz scroll automático para a mensagem mais recente
@@ -56,8 +60,10 @@ export default function App() {
   const sendMessage = async () => {
     if (!input.trim()) return;
     
-    const newMessages = [...messages, { role: "user", text: input }];
-    setMessages(newMessages);
+    const userMessage = { role: "user", text: input };
+    const updatedMessages = [...messages, userMessage];
+    
+    setMessages(updatedMessages);
     setInput("");
     setLoading(true);
 
@@ -65,12 +71,15 @@ export default function App() {
       const response = await fetch("http://localhost:8000/ag-ui-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: input })
+        body: JSON.stringify({ 
+          question: input,
+          session_id: sessionId // Enviado para o backend gerir a memória no Redis!
+        })
       });
       const data = await response.json();
-      setMessages([...newMessages, data]);
+      setMessages([...updatedMessages, data]);
     } catch (error) {
-      setMessages([...newMessages, { role: "ai", text: "Erro: Backend Python não está a correr na porta 8000." }]);
+      setMessages([...updatedMessages, { role: "ai", text: "Erro: Backend Python não está a correr na porta 8000." }]);
     } finally {
       setLoading(false);
     }

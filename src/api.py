@@ -1,18 +1,18 @@
 import os
 import json
-from fastapi import FastAPI
+from typing import List, Optional
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from src.rag_pipeline import retrieve_context
 from src.llm_failover import get_llm_response
+from src.redis_memory import get_session_history, save_session_history
 
 load_dotenv()
 
-# 1. Configuração do Servidor Web
-app = FastAPI(title="Spiderthrone AG-UI API")
+app = FastAPI(title="Spiderthrone AG-UI API with Redis")
 
-# Permite que o frontend React comunique com o backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,8 +23,8 @@ app.add_middleware(
 
 class ChatRequest(BaseModel):
     question: str
+    session_id: str
 
-# 2. Definição das Tools (Widgets)
 ferramentas_ui = [
     {
         "type": "function",
@@ -67,31 +67,34 @@ ferramentas_ui = [
     }
 ]
 
-# 3. Endpoint Principal
 @app.post("/ag-ui-chat")
 async def chat_endpoint(req: ChatRequest):
+    if not req.session_id:
+        raise HTTPException(status_code=400, detail="session_id é obrigatório para gerir a memória.")
+
+    # 1. Carrega o histórico completo do Redis
+    history = get_session_history(req.session_id)
+
+    # 2. Recupera o contexto vetorial baseado na pergunta atual
     context = retrieve_context(req.question, target_date="2026-10-11") 
     
-    if not context.strip():
-        return {"role": "ai", "text": "Não encontrei informação legal suficiente na base de dados para responder a esta questão."}
-
     system_prompt = """
-    És o Spiderthrone, um assistente jurídico português avançado com interface gerativa.
-    Baseia-te EXCLUSIVAMENTE no contexto fornecido.
-    
-    REGRAS DE INTERFACE:
-    - Se a pergunta for genérica, responde com texto normal, citando as fontes.
-    - Se o utilizador quiser ver a lei/acórdão, CHAMA A FERRAMENTA 'mostrar_documento_legal'.
-    - Se a pergunta for sobre valores monetários ou taxas, CHAMA A FERRAMENTA 'mostrar_tabela_valores'.
+    És o Spiderthrone, um assistente jurídico português avançado especializado em Direito do Trabalho com interface gerativa.
+    Baseia-te EXCLUSIVAMENTE no contexto fornecido e lembra-te do histórico recente da conversa para manter a continuidade.
     """
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"CONTEXTO DO QDRANT:\n{context}\n\nPERGUNTA DO ADVOGADO: {req.question}"}
-    ]
+    messages = [{"role": "system", "content": system_prompt}]
+    
+    # JANELA DESLIZANTE: Envia apenas as últimas 6 mensagens (3 interações) para evitar erros 413/429
+    recent_history = history[-6:]
+    for msg in recent_history:
+        role = "assistant" if msg["role"] in ["ai", "assistant"] else "user"
+        messages.append({"role": role, "content": msg["text"]})
+
+    user_content = f"CONTEXTO DO QDRANT:\n{context}\n\nPERGUNTA DO ADVOGADO: {req.question}" if context.strip() else f"PERGUNTA DO ADVOGADO: {req.question}"
+    messages.append({"role": "user", "content": user_content})
 
     try:
-        # Passa as ferramentas (Widgets) para o Router. Ele lida com as tentativas e quedas.
         mensagem_ia = get_llm_response(
             messages=messages, 
             tools=ferramentas_ui, 
@@ -99,27 +102,36 @@ async def chat_endpoint(req: ChatRequest):
             temperature=0.0
         )
         
+        ai_response_text = ""
+        widget_data = None
+
         if mensagem_ia.tool_calls:
             tool_call = mensagem_ia.tool_calls[0]
-            nome_do_widget = tool_call.function.name
-            argumentos = json.loads(tool_call.function.arguments)
-            
-            return {
-                "role": "ai",
-                "text": "Com base na jurisprudência, aqui está o que pediu:",
-                "widget": nome_do_widget,
-                "widgetArgs": argumentos
+            widget_data = {
+                "widget": tool_call.function.name,
+                "widgetArgs": json.loads(tool_call.function.arguments)
             }
-            
-        return {
+            ai_response_text = "Com base na legislação, aqui está o que pediu:"
+        else:
+            ai_response_text = mensagem_ia.content
+
+        # Guarda no Redis
+        history.append({"role": "user", "text": req.question})
+        history.append({"role": "assistant", "text": ai_response_text})
+        save_session_history(req.session_id, history)
+
+        response_payload = {
             "role": "ai",
-            "text": mensagem_ia.content
+            "text": ai_response_text
         }
+        if widget_data:
+            response_payload.update(widget_data)
+
+        return response_payload
 
     except Exception as e:
         return {"role": "ai", "text": f"Erro interno do servidor IA: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn
-    # Arranca o servidor na porta 8000
     uvicorn.run(app, host="0.0.0.0", port=8000)
