@@ -1,0 +1,24 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.ruff_cache/
+.uv/
+
+# Virtual environments & Secrets
+.venv/
+.env
+
+# Node modules
+frontend/node_modules/
+node_modules/
+
+# Vector DB
+qdrant_db/
+
+# System files
+.DS_Store

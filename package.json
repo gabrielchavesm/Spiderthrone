@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "@ag-ui/client": "^1.0.2",
+    "@assistant-ui/react": "^0.15.27",
+    "@assistant-ui/react-ag-ui": "^0.0.67"
+  }
+}
