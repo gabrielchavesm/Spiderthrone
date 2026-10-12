@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 
 def scrape_dgsi_ruling(url: str) -> dict[str, Any]:
-    response = requests.get(url)
+    response = requests.get(url, timeout=15)
     response.raise_for_status()
 
     # 1. Descodificamos explicitamente os bytes para texto usando o padrão do governo (windows-1252)

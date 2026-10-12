@@ -47,8 +47,7 @@ def index_legal_chunks(client: QdrantClient, chunks: list[LegalChunk]):
         # Combina o URL da lei com o índice do bloco para gerar sempre o mesmo ID.
         # Se a lei for re-ingerida, o Qdrant substitui o bloco antigo em vez de duplicar.
         seed = f"{chunk.doc_id}_chunk_{i}".encode()
-        deterministic_uuid = str(uuid.UUID(hashlib.md5(seed).hexdigest()))
-
+        deterministic_uuid = str(uuid.UUID(hashlib.md5(seed, usedforsecurity=False).hexdigest()))
         point = PointStruct(
             id=deterministic_uuid,
             vector={"dense": dense_vec.tolist(), "sparse": sparse_vec.as_object()},
