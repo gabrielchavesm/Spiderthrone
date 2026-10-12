@@ -73,9 +73,10 @@ jobs:
         with:
           python-version: '3.12'
       
-      - name: Instalar Dependências do Scraper
+      - name: Instalar Dependências com uv e Playwright
         run: |
-          pip install -r requirements.txt
+          pip install uv
+          uv sync --all-extras
           playwright install chromium
 
       - name: Executar Verificador de Alterações e Ingestão Automática
