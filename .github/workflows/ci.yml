@@ -34,7 +34,7 @@ jobs:
         run: bandit -r src/ -ll
 
       - name: Auditoria de Vulnerabilidades em Dependências (Safety)
-        run: safety scan
+        run: safety scan --no-input
 
   build-and-sdist:
     name: Build e Empacotamento (sdist)
