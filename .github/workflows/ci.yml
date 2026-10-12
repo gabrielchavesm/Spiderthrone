@@ -81,6 +81,7 @@ jobs:
 
       - name: Executar Verificador de Alterações e Ingestão Automática
         env:
+          PYTHONPATH: "."
           QDRANT_PATH: "./qdrant_db"
         run: |
           .venv/bin/python scripts/check_legal_updates.py
