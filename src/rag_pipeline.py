@@ -64,17 +64,17 @@ def retrieve_context(query_text: str, target_date: str) -> str:
                 query=query_dense_vector,
                 using="dense",
                 filter=hybrid_filter,
-                limit=6
+                limit=8
             ),
             Prefetch(
                 query=query_sparse_vector,
                 using="sparse",
                 filter=hybrid_filter,
-                limit=6
+                limit=8
             ),
         ],
         query=FusionQuery(fusion=Fusion.RRF),
-        limit=6
+        limit=8
     )
     
     results = response.points

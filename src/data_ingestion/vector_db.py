@@ -1,3 +1,5 @@
+import uuid
+import hashlib
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, SparseVectorParams, PointStruct
 from fastembed import TextEmbedding, SparseTextEmbedding
@@ -20,31 +22,27 @@ def setup_qdrant_client() -> QdrantClient:
     return client
 
 def index_legal_chunks(client: QdrantClient, chunks: list[LegalChunk]):
-    print("A carregar modelos de embedding (Denso e Esparso)...")
     dense_model = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
     sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
     collection_name = "spiderthrone_legal"
 
     texts = [chunk.text for chunk in chunks]
-
-    print("A gerar vetores densos...")
     dense_embeddings = list(dense_model.embed(texts))
-    
-    print("A gerar vetores esparsos (BM25)...")
     sparse_embeddings = list(sparse_model.embed(texts))
 
     points = []
     for i, (chunk, dense_vec, sparse_vec) in enumerate(zip(chunks, dense_embeddings, sparse_embeddings)):
         payload = chunk.model_dump(mode='json')
-        
-        if chunk.valid_from:
-            payload['valid_from_ts'] = int(chunk.valid_from.strftime("%Y%m%d"))
-        else:
-            payload['valid_from_ts'] = 0
+        payload['valid_from_ts'] = int(chunk.valid_from.strftime("%Y%m%d")) if chunk.valid_from else 0
 
-        # Correção compatível com a versão atual do qdrant-client
+        # GERAÇÃO DE ID DETERMINÍSTICO (UPSERT INTELIGENTE)
+        # Combina o URL da lei com o índice do bloco para gerar sempre o mesmo ID.
+        # Se a lei for re-ingerida, o Qdrant substitui o bloco antigo em vez de duplicar.
+        seed = f"{chunk.doc_id}_chunk_{i}".encode('utf-8')
+        deterministic_uuid = str(uuid.UUID(hashlib.md5(seed).hexdigest()))
+
         point = PointStruct(
-            id=i,
+            id=deterministic_uuid,
             vector={
                 "dense": dense_vec.tolist(),
                 "sparse": sparse_vec.as_object()
@@ -53,11 +51,7 @@ def index_legal_chunks(client: QdrantClient, chunks: list[LegalChunk]):
         )
         points.append(point)
 
-    client.upsert(
-        collection_name=collection_name,
-        points=points
-    )
-    print(f"Sucesso! Indexados {len(points)} chunks com suporte a pesquisa híbrida nativa.")
+    client.upsert(collection_name=collection_name, points=points)
 
 if __name__ == "__main__":
     url_dgsi = "https://www.dgsi.pt/jstj.nsf/954f0ce6ad9dd8b980256b5f003fa814/4a10f461894a769680258137004d63e9?OpenDocument"
