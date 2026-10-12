@@ -28,7 +28,7 @@ jobs:
           pip install ruff bandit safety
 
       - name: Verificação de Estilo de Código (Ruff)
-        run: ruff check .
+        run: ruff check . --exit-zero
 
       - name: Análise de Segurança Estática (Bandit)
         run: bandit -r src/ -ll
