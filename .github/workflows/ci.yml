@@ -77,10 +77,10 @@ jobs:
         run: |
           pip install uv
           uv sync --all-extras
-          playwright install chromium
+          .venv/bin/playwright install chromium
 
       - name: Executar Verificador de Alterações e Ingestão Automática
         env:
           QDRANT_PATH: "./qdrant_db"
         run: |
-          python scripts/check_legal_updates.py
+          .venv/bin/python scripts/check_legal_updates.py
