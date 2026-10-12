@@ -1,0 +1,85 @@
+name: Spiderthrone CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-and-lint:
+    name: Segurança e Qualidade de Código
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Instalar Dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff bandit safety
+
+      - name: Verificação de Estilo de Código (Ruff)
+        run: ruff check .
+
+      - name: Análise de Segurança Estática (Bandit)
+        run: bandit -r src/ -ll
+
+      - name: Auditoria de Vulnerabilidades em Dependências (Safety)
+        run: safety check
+
+  build-and-sdist:
+    name: Build e Empacotamento (sdist)
+    needs: security-and-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Gerar Pacote Fonte (sdist)
+        run: |
+          pip install build
+          python -m build --sdist
+
+      - name: Guardar Artefacto do Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: spiderthrone-sdist
+          path: dist/*.tar.gz
+
+  legal-corpus-sync:
+    name: Verificador Inteligente de Códigos (DRE/Legislação)
+    needs: build-and-sdist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python e Playwright
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      
+      - name: Instalar Dependências do Scraper
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Executar Verificador de Alterações e Ingestão Automática
+        env:
+          QDRANT_PATH: "./qdrant_db"
+        run: |
+          python scripts/check_legal_updates.py
