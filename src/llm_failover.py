@@ -1,17 +1,38 @@
 import os
-from openai import OpenAI
+import time
+import logging
+from langfuse.openai import OpenAI
+from langfuse import get_client
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("Spiderthrone-Langfuse")
 
 def get_llm_response(messages: list, tools: list = None, tool_choice: str = None, temperature: float = 0.0):
+    # Inicializa o cliente do Langfuse para garantir a ligação autenticada
+    langfuse = get_client()
+    
     llm_providers = [
         {
-            "name": "Groq (Qwen 3.8 27B)",
+            "name": "Groq Principal (Qwen 3.8 27B)",
             "api_key": os.getenv("GROQ_API_KEY"),
             "base_url": "https://api.groq.com/openai/v1",
             "model": "qwen/qwen3.8-27b"
         },
         {
-            "name": "Groq (GPT-OSS 20B)",
+            "name": "Groq Secundário (Qwen 3.8 27B)",
+            "api_key": os.getenv("SECOND_GROQ_API_KEY"),
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": "qwen/qwen3.8-27b"
+        },
+        {
+            "name": "Groq Principal (GPT-OSS 20B)",
             "api_key": os.getenv("GROQ_API_KEY"),
+            "base_url": "https://api.groq.com/openai/v1",
+            "model": "openai/gpt-oss-20b"
+        },
+        {
+            "name": "Groq Secundário (GPT-OSS 20B)",
+            "api_key": os.getenv("SECOND_GROQ_API_KEY"),
             "base_url": "https://api.groq.com/openai/v1",
             "model": "openai/gpt-oss-20b"
         },
@@ -23,13 +44,18 @@ def get_llm_response(messages: list, tools: list = None, tool_choice: str = None
         }
     ]
 
-    for provider in llm_providers:
+    trace_id = f"trace-spiderthrone-{int(time.time()*1000)}"
+    logger.info(f"[{trace_id}] A iniciar cadeia de failover com observabilidade Langfuse...")
+
+    for index, provider in enumerate(llm_providers):
         if not provider["api_key"]:
             continue
             
-        print(f"-> A tentar conectar a: {provider['name']}...")
+        start_time = time.time()
+        logger.info(f"[{trace_id}] -> Tentativa Nível {index+1}: {provider['name']} ({provider['model']})...")
         
         try:
+            # Usa o wrapper do Langfuse para a OpenAI para capturar automaticamente o trace
             client = OpenAI(
                 api_key=provider["api_key"],
                 base_url=provider["base_url"]
@@ -47,9 +73,14 @@ def get_llm_response(messages: list, tools: list = None, tool_choice: str = None
                     kwargs["tool_choice"] = tool_choice
 
             response = client.chat.completions.create(**kwargs)
+            duration = round((time.time() - start_time) * 1000, 2)
+            
+            logger.info(f"[{trace_id}] [SUCESSO] Nível {index+1} ({provider['name']}) respondeu em {duration}ms.")
             return response.choices[0].message
             
         except Exception as e:
-            print(f"   [AVISO] Falha no {provider['name']}: {str(e)[:100]}...")
+            duration = round((time.time() - start_time) * 1000, 2)
+            logger.error(f"[{trace_id}] [FAILOVER ATIVO] Falha no Nível {index+1} ({provider['name']}) após {duration}ms. Erro: {str(e)[:100]}...")
 
-    raise Exception("ERRO CRÍTICO: Todos os modelos falharam ou não existem chaves de API configuradas no ficheiro .env.")
+    logger.critical(f"[{trace_id}] ERRO CRÍTICO: Todos os níveis do failover falharam.")
+    raise Exception("ERRO CRÍTICO: Todos os modelos falharam ou não existem chaves de API válidas configuradas no ficheiro .env.")

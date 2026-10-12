@@ -23,7 +23,12 @@ if collection_name not in collections:
         )
     )
 
-def parse_pdf_codigo_trabalho(pdf_path: str):
+def parse_pdf_articles(pdf_path: str, domain: str, start_id: int):
+    print(f"A ler e processar o PDF oficial: {pdf_path}...")
+    if not os.path.exists(pdf_path):
+        print(f"Aviso: O ficheiro {pdf_path} não foi encontrado.")
+        return []
+
     reader = pypdf.PdfReader(pdf_path)
     full_text = ""
     for page in reader.pages:
@@ -31,11 +36,12 @@ def parse_pdf_codigo_trabalho(pdf_path: str):
         if text:
             full_text += text + "\n"
             
-    # Expressão regular melhorada para detetar todos os artigos no PDF oficial
+    # Expressão regular para detetar artigos
     pattern = r"(Artigo\s+\d+(?:\.?[º°])?(?:-[A-Za-z]+)?[^\n]*)"
     splits = re.split(pattern, full_text)
     
     chunks = []
+    current_id = start_id
     for i in range(1, len(splits), 2):
         article_title = splits[i].strip()
         article_body = splits[i+1].strip() if i+1 < len(splits) else ""
@@ -43,37 +49,44 @@ def parse_pdf_codigo_trabalho(pdf_path: str):
         if len(article_body) < 5:
             continue
             
-        chunks.append({
-            "article": article_title,
-            "page_content": f"{article_title}\n{article_body}",
-            "domain": "direito_trabalho",
-            "valid_from_ts": 20090217,
-            "rhetorical_role": "NORMA"
-        })
+        vector = encoder.encode(f"{article_title}\n{article_body}").tolist()
         
-    return chunks
-
-pdf_file = "codigo_trabalho.pdf"
-if os.path.exists(pdf_file):
-    print(f"A ler e processar diretamente o PDF oficial {pdf_file}...")
-    articles = parse_pdf_codigo_trabalho(pdf_file)
-    print(f"Encontrados {len(articles)} artigos no PDF. A vetorizar e injetar no Qdrant...")
-    
-    points = []
-    for idx, item in enumerate(articles):
-        vector = encoder.encode(item["page_content"]).tolist()
-        points.append(
+        chunks.append(
             models.PointStruct(
-                id=idx + 20000, # ID único atualizado
+                id=current_id,
                 vector=vector,
-                payload=item
+                payload={
+                    "article": article_title,
+                    "page_content": f"{article_title}\n{article_body}",
+                    "domain": domain,
+                    "valid_from_ts": 20090217,
+                    "rhetorical_role": "NORMA"
+                }
             )
         )
-    
+        current_id += 1
+        
+    print(f"-> {len(chunks)} artigos extraídos de {pdf_path}.")
+    return chunks
+
+# Definir os ficheiros a processar e os respetivos domínios e IDs iniciais
+targets = [
+    {"file": "codigo_trabalho.pdf", "domain": "direito_trabalho", "start_id": 10000},
+    {"file": "codigo_civil.pdf", "domain": "direito_civil", "start_id": 30000},
+    {"file": "codigo_processo_civil.pdf", "domain": "direito_processo_civil", "start_id": 50000},
+]
+
+all_points = []
+for target in targets:
+    points = parse_pdf_articles(target["file"], target["domain"], target["start_id"])
+    all_points.extend(points)
+
+if all_points:
+    print(f"A injetar um total de {len(all_points)} artigos no Qdrant...")
     client.upsert(
         collection_name=collection_name,
-        points=points
+        points=all_points
     )
-    print(f"Sucesso absoluto! {len(points)} artigos extraídos do PDF foram indexados no Qdrant.")
+    print("Sucesso absoluto! Todos os Códigos Core foram indexados no Qdrant.")
 else:
-    print(f"Erro: O ficheiro {pdf_file} não foi encontrado na pasta.")
+    print("Nenhum artigo foi indexado. Verifique se os PDFs estão na pasta correta.")
